@@ -27,10 +27,23 @@ namespace ASCOM.RelayPwr
             // Update the state variables with results from the dialogue
             Switch.comPort = (string)comboBoxComPort.SelectedItem;
             Switch.traceState = chkTrace.Checked;
+            Switch.numSwitch = (short)Int32.Parse(relaycount.Text);
             Switch.configure[0] = RelayName0.Text;
             Switch.configure[1] = RelayName1.Text;
             Switch.configure[2] = RelayName2.Text;
             Switch.configure[3] = RelayName3.Text;
+            Switch.configure[4] = RelayName4.Text;
+            Switch.configure[5] = RelayName5.Text;
+            Switch.configure[6] = RelayName6.Text;
+            Switch.configure[7] = RelayName7.Text;
+            // override relays that are not present
+            if (Switch.numSwitch <8)
+            {
+                for (int i= Switch.numSwitch; i<8; i++)
+                {
+                    Switch.configure[i] = "not used";
+                }
+            }
         }
 
         private void cmdCancel_Click(object sender, EventArgs e) // Cancel button event handler
@@ -61,10 +74,16 @@ namespace ASCOM.RelayPwr
             // set the list of com ports to those that are currently available
             comboBoxComPort.Items.Clear();
             comboBoxComPort.Items.AddRange(System.IO.Ports.SerialPort.GetPortNames());      // use System.IO because it's static
-            RelayName0.Text=Switch.configure[0];
+            relaycount.Text = Switch.numSwitch.ToString();
+            RelayName0.Text = Switch.configure[0];
             RelayName1.Text = Switch.configure[1];
             RelayName2.Text = Switch.configure[2];
             RelayName3.Text = Switch.configure[3];
+            RelayName4.Text = Switch.configure[4];
+            RelayName5.Text = Switch.configure[5]; 
+            RelayName6.Text = Switch.configure[6];
+            RelayName7.Text = Switch.configure[7];
+
             // select the current port if possible
             if (comboBoxComPort.Items.Contains(Switch.comPort))
             {

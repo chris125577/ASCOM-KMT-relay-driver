@@ -3,7 +3,7 @@
 // 
 // ASCOM Switch driver for RelayPwr
 //
-// Description:	Serial Relay Driver - 4-way single byte commands
+// Description:	Serial Relay Driver - n-way single byte commands
 //
 // Implements:	ASCOM Switch interface version: 
 // Author:		(CJW) Chris Woodhouse <chris@beyondmonochrome.co.uk>
@@ -16,10 +16,13 @@
 // 22-Oct-2016  CJW 1.1.0   Attempt to improve receive character
 // 17 Feb 2017  CJW 1.2     Using new relay board KMtronic- more complex and robust serial commands
 // 06-Nov-2020  CJW 2.0     Using ASCOM profile store to keep names
+// 04-Nov-2021  CJW 2.5      Updated to allow different relay counts
+// 07-Nov-2021  CJW 2.7  Had to implement analog switches to double up on binary switches to avoid conformance issues.
+// 13-Nov-2021  CJW 2.8  changed over to ASCOM serial from .Net serial, hoping to make work with hub!!?
+// 13-Nov-2021  CJW 2.9  made the status instantenous, rather than read relay before giving status. updated after setswitch
+// 14-Nov-2021  CJW 3.0  went back to .NET serial (seems faster) and expanded so that it can handle 8, 4, 2 or single relay modules
 // --------------------------------------------------------------------------------
 // The author provides this driver as-is. This is not a product and offers no guarantee of its performance
-
-
 // This is used to define code in the template that is specific to one class implementation
 // unused code can be deleted and this definition removed.
 #define Switch
@@ -32,6 +35,8 @@ using ASCOM.DeviceInterface;
 using System.Globalization;
 using System.Collections;
 using System.IO.Ports;
+using System.Threading;
+
 
 namespace ASCOM.RelayPwr
 {
@@ -63,11 +68,14 @@ namespace ASCOM.RelayPwr
         internal static string traceStateDefault = "false";
         internal static string comPort; // Variables to hold the currrent device com port configuration
         internal static bool traceState;
-        internal static string[] configure = new string[4]; // for relay names into profile store
+        //  change the following line according to the number of relays
+        internal static short numSwitch = 8; // number of relays in this driver
+        
+        internal static string[] configure = new string[8]; // for relay names into profile store
         
         // for serial commands
         internal byte startByte = 0xFF;  // start character of relay command
-        private byte[] relayStatus = new byte[4];  //  xx xx xx xx  01 /00 for each relay
+        private byte[] relayStatus = new byte[numSwitch];  //  xx xx xx xx  01 /00 for each relay
         internal byte[] command = new byte[3];  // relay command string
         internal byte[] readRelay = new byte[] { 0xFF, 0x09, 0x0 };
         internal byte setpin = 0x01, clearpin = 0x00;  // control bytes to set and reset relay
@@ -91,8 +99,8 @@ namespace ASCOM.RelayPwr
         /// Private variable to hold the trace logger object (creates a diagnostic log file with information that you specify)
         /// </summary>
         private TraceLogger tl;
-        private SerialPort Serial;  // my serial port instance of ASCOM serial port
-
+        private SerialPort Serial;  // .net serial port
+        //private Utilities.Serial Serial; // my serial port instance of ASCOM serial port
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RelayPwr"/> class.
@@ -126,12 +134,13 @@ namespace ASCOM.RelayPwr
             {
                 Serial.Open();              // open port
                 Serial.DiscardInBuffer();   // and clear it out just in case
+                Thread.Sleep(1000); // suspect the board has an Arduino
+                return Serial.IsOpen;
             }
             catch (Exception)
             {
                 return false;
             }
-            return true;
         }
 
         //
@@ -207,6 +216,8 @@ namespace ASCOM.RelayPwr
             astroUtilities.Dispose();
             astroUtilities = null;
             Serial.Dispose();
+            Serial = null;
+
         }
 
         public bool Connected
@@ -227,11 +238,13 @@ namespace ASCOM.RelayPwr
                     connectedState = true;
                     tl.LogMessage("Connected Set", "Connecting to port " + comPort);
                     SetupSwitch();  // turn on serial
+                    updatefromboard();  // find real status
                 }
                 else
                 {
                     connectedState = false;
                     tl.LogMessage("Connected Set", "Disconnecting from port " + comPort);
+                    Serial.DtrEnable = false;
                     Serial.Close();
                     Serial.Dispose();
                 }
@@ -293,8 +306,7 @@ namespace ASCOM.RelayPwr
 
         #region ISwitchV2 Implementation
 
-        private short numSwitch = 4; // number of relays in this driver
-
+      
         /// <summary>
         /// The number of switches managed by this driver
         /// </summary>
@@ -303,7 +315,7 @@ namespace ASCOM.RelayPwr
             get
             {
                 tl.LogMessage("MaxSwitch Get", numSwitch.ToString());
-                return this.numSwitch;
+                return numSwitch;
             }
         }
 
@@ -376,22 +388,27 @@ namespace ASCOM.RelayPwr
         /// <returns>
         /// True or false
         /// </returns>
+        
+        
         public bool GetSwitch(short id)
         {
             Validate("GetSwitch", id);
+            return (relayStatus[id] > 0);
+        }
+        private void updatefromboard()
+        {            
             try
             {
-                Serial.DiscardInBuffer(); // clear garbage
-                Serial.Write(readRelay, 0, 3); // send the read relay status command
-                for(int i = 0; i < 4; i++)  // read in 4 bytes, one for each relay
+                Serial.DiscardInBuffer(); // clear garbage (.net)
+                Serial.Write(readRelay, 0, 3); // send the read relay status command   
+                for(int i = 0; i < numSwitch; i++)  // read in bytes, one for each relay
                 {
-                    relayStatus[i] = (byte)Serial.ReadByte();
+                    relayStatus[i] = (byte)Serial.ReadByte(); //.net version
                 }
-                return (relayStatus[id] > 0);
+                return;
             }
             catch
             {
-                tl.LogMessage("GetSwitch", string.Format("GetSwitch({0}) - not implemented", id));
                 throw new ASCOM.NotConnectedException("GetSwitch");
             }
         }
@@ -411,19 +428,27 @@ namespace ASCOM.RelayPwr
             {
                 var str = string.Format("SetSwitch({0}) - Cannot Write", id);
                 tl.LogMessage("SetSwitch", str);
-                throw new MethodNotImplementedException(str);
+                throw new PropertyNotImplementedException(str);
             }
             else  // ok
             {
                 byte[] relaycmd = new byte[3];
                 relaycmd[0] = startByte;
                 relaycmd[1] = (byte)(id + 1);  // form relay number
-                
-                if (state) relaycmd[2] = (byte)(setpin);  // set relay
-                else relaycmd[2] = (byte)(clearpin);   // release relay
-                Serial.Write(relaycmd,0,3);         // send command  
+                if (state)   // set relay
+                {
+                    relaycmd[2] = (byte)(setpin);  
+                    if (state) relayStatus[id] = 1; // update status
+                }
+                else                // release relay
+                {
+                    relaycmd[2] = (byte)(clearpin);
+                    relayStatus[id] = 0; // update status
+                }
+                Serial.Write(relaycmd,0,3);         // send command .net versionn
                 var str = string.Format("SetSwitch({0}) -  Write", id);
                 tl.LogMessage("SetSwitch", str);
+                updatefromboard(); // update actual switch states
             }
         }
 
@@ -482,8 +507,8 @@ namespace ASCOM.RelayPwr
         public double GetSwitchValue(short id)
         {
             Validate("GetSwitchValue", id);
-            tl.LogMessage("GetSwitchValue", string.Format("GetSwitchValue({0}) - not implemented", id));
-            throw new MethodNotImplementedException("GetSwitchValue"); // not inplmented by relay switches
+            if (GetSwitch(id) == false) return 0.0;
+                else return 1.0; 
         }
 
         /// <summary>
@@ -497,13 +522,8 @@ namespace ASCOM.RelayPwr
         public void SetSwitchValue(short id, double value)
         {
             Validate("SetSwitchValue", id, value);
-            if (!CanWrite(id))
-            {
-                tl.LogMessage("SetSwitchValue", string.Format("SetSwitchValue({0}) - Cannot write", id));
-                throw new ASCOM.MethodNotImplementedException(string.Format("SetSwitchValue({0}) - Cannot write", id));
-            }
-            tl.LogMessage("SetSwitchValue", string.Format("SetSwitchValue({0}) = {1} - not implemented", id, value));
-            throw new MethodNotImplementedException("SetSwitchValue");
+            if (value < 0.5) SetSwitch(id, false);
+            else SetSwitch(id, true);
         }
 
         #endregion
@@ -551,16 +571,16 @@ namespace ASCOM.RelayPwr
         /// <param name="message"></param>
         /// <param name="id"></param>
         /// <param name="expectBoolean"></param>
-        //private void Validate(string message, short id, bool expectBoolean)
-        //{
-        //    Validate(message, id);
-        //    var ns = (int)(((MaxSwitchValue(id) - MinSwitchValue(id)) / SwitchStep(id)) + 1);
-        //    if ((expectBoolean && ns != 2) || (!expectBoolean && ns <= 2))
-        //    {
-        //        tl.LogMessage(message, string.Format("Switch {0} has the wriong number of states", id, ns));
-        //        throw new MethodNotImplementedException(string.Format("{0}({1})", message, id));
-        //    }
-        //}
+        private void Validate(string message, short id, bool expectBoolean)
+        {
+           Validate(message, id);
+            var ns = (int)(((MaxSwitchValue(id) - MinSwitchValue(id)) / SwitchStep(id)) + 1);
+            if ((expectBoolean && ns != 2) || (!expectBoolean && ns <= 2))
+            {
+                tl.LogMessage(message, string.Format("Switch {0} has the wriong number of states", id, ns));
+                throw new InvalidValueException(string.Format("{0}({1})", message, id));
+            }
+        }
 
         #endregion
 
@@ -649,7 +669,9 @@ namespace ASCOM.RelayPwr
         {
             get
             {
-                // TODO check that the driver hardware connection exists and is connected to the hardware
+                // check the actual serial connection (checks for unplugged)
+                connectedState = Serial.IsOpen; //.net version
+                //connectedState = Serial.Connected; // ascom version
                 return connectedState;
             }
         }
@@ -676,10 +698,18 @@ namespace ASCOM.RelayPwr
                 driverProfile.DeviceType = "Switch";
                 traceState = Convert.ToBoolean(driverProfile.GetValue(driverID, traceStateProfileName, string.Empty, traceStateDefault));
                 comPort = driverProfile.GetValue(driverID, comPortProfileName, string.Empty, comPortDefault);
-                configure[0] = driverProfile.GetValue(driverID, "relay0", string.Empty, "relay1");
-                configure[1] = driverProfile.GetValue(driverID, "relay1", string.Empty, "relay2");
-                configure[2] = driverProfile.GetValue(driverID, "relay2", string.Empty, "relay3");
-                configure[3] = driverProfile.GetValue(driverID, "relay3", string.Empty, "relay4");
+                numSwitch = (short)Int32.Parse(driverProfile.GetValue(driverID, "relaycount", string.Empty, "4")); // default 4-way relay
+                for (int i = 0; i < numSwitch; i++)  
+                {
+                    configure[i] = driverProfile.GetValue(driverID, "relay" + i.ToString(), string.Empty, "relay" + (i+1).ToString());
+                }
+                if (numSwitch<8)
+                {
+                    for (int i = numSwitch; i<8; i++)
+                    {
+                        configure[i] = driverProfile.GetValue(driverID, "relay" + i.ToString(), string.Empty, "not used");
+                    }
+                }
             }
         }
 
@@ -693,10 +723,11 @@ namespace ASCOM.RelayPwr
                 driverProfile.DeviceType = "Switch";
                 driverProfile.WriteValue(driverID, traceStateProfileName, traceState.ToString());
                 driverProfile.WriteValue(driverID, comPortProfileName, comPort.ToString());
-                driverProfile.WriteValue(driverID, "relay0", configure[0]);
-                driverProfile.WriteValue(driverID, "relay1", configure[1]);
-                driverProfile.WriteValue(driverID, "relay2", configure[2]);
-                driverProfile.WriteValue(driverID, "relay3", configure[3]);
+                driverProfile.WriteValue(driverID, "relaycount", numSwitch.ToString());
+                for (int i = 0; i < 8; i++)
+                {
+                    driverProfile.WriteValue(driverID, "relay" + i.ToString(), configure[i]);
+                }
             }
         }
                 #endregion
