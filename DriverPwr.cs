@@ -8,7 +8,7 @@
 // Implements:	ASCOM Switch interface version: 
 // Author:		(CJW) Chris Woodhouse <chris@beyondmonochrome.co.uk>
 //
-// Edit Log:
+// Edit Log: 
 //
 // Date			Who	Vers	Description
 // -----------	---	-----	-------------------------------------------------------
