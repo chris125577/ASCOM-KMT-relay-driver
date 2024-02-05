@@ -5,13 +5,13 @@
 [Setup]
 AppID={{dc547a7c-268c-4c03-8d65-5c0d3d84e2f5}
 AppName=ASCOM RelayPwr Switch Driver
-AppVerName=ASCOM RelayPwr Switch Driver 3.0
+AppVerName=ASCOM RelayPwr Switch Driver 3.1
 AppVersion=2.7
 AppPublisher=Chris Woodhouse <chris@beyondmonochrome.co.uk>
 AppPublisherURL=mailto:chris@beyondmonochrome.co.uk
 AppSupportURL=https://ascomtalk.groups.io/g/Help
 AppUpdatesURL=https://ascom-standards.org/
-VersionInfoVersion=1.0.0
+VersionInfoVersion=3.1.0
 MinVersion=6.1.7601
 DefaultDirName="{cf}\ASCOM\Switch"
 DisableDirPage=yes
@@ -34,9 +34,9 @@ Name: "{cf}\ASCOM\Uninstall\Switch\RelayPwr"
 ; TODO: Add subfolders below {app} as needed (e.g. Name: "{app}\MyFolder")
 
 [Files]
-Source: "E:\Visual Studio\Project files\Gizmo\RelayPwr\bin\Release\ASCOM.RelayPwr.Switch.dll"; DestDir: "{app}"
+Source: "D:\Visual Studio\Project files\Gizmo\RelayPwr\bin\Release\ASCOM.RelayPwr.Switch.dll"; DestDir: "{app}"
 ; Require a read-me HTML to appear after installation, maybe driver's Help doc
-Source: "E:\Visual Studio\Project files\Gizmo\RelayPwr\ReadMe.htm"; DestDir: "{app}"; Flags: isreadme
+Source: "D:\Visual Studio\Project files\Gizmo\RelayPwr\ReadMe.htm"; DestDir: "{app}"; Flags: isreadme
 ; TODO: Add other files needed by your driver here (add subfolders above)
 
 

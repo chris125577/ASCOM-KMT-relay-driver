@@ -21,6 +21,7 @@
 // 13-Nov-2021  CJW 2.8  changed over to ASCOM serial from .Net serial, hoping to make work with hub!!?
 // 13-Nov-2021  CJW 2.9  made the status instantenous, rather than read relay before giving status. updated after setswitch
 // 14-Nov-2021  CJW 3.0  went back to .NET serial (seems faster) and expanded so that it can handle 8, 4, 2 or single relay modules
+// 05-Jan-2024  CJW 3.1  changed read status to single relays for 1- and 2- relay boards
 // --------------------------------------------------------------------------------
 // The author provides this driver as-is. This is not a product and offers no guarantee of its performance
 // This is used to define code in the template that is specific to one class implementation
@@ -77,8 +78,9 @@ namespace ASCOM.RelayPwr
         internal byte startByte = 0xFF;  // start character of relay command
         private byte[] relayStatus = new byte[numSwitch];  //  xx xx xx xx  01 /00 for each relay
         internal byte[] command = new byte[3];  // relay command string
-        internal byte[] readRelay = new byte[] { 0xFF, 0x09, 0x0 };
+        internal byte[] readRelay = new byte[] { 0xFF, 0x09, 0x0 }; //  1- and 2-ways do not use this
         internal byte setpin = 0x01, clearpin = 0x00;  // control bytes to set and reset relay
+        internal byte readpin = 0x03;  // change over to reading relay status individually (due to 1 and 2 way relays)
        
         /// <summary>
         /// Private variable to hold the connected state
@@ -400,10 +402,28 @@ namespace ASCOM.RelayPwr
             try
             {
                 Serial.DiscardInBuffer(); // clear garbage (.net)
-                Serial.Write(readRelay, 0, 3); // send the read relay status command   
-                for(int i = 0; i < numSwitch; i++)  // read in bytes, one for each relay
+                byte[] relaycmd = new byte[3];
+                byte[] relayrx = new byte[3];
+                if (numSwitch > 2)
                 {
-                    relayStatus[i] = (byte)Serial.ReadByte(); //.net version
+                    Serial.Write(readRelay, 0, 3); // send the read relay status command (not universal)
+                    for (int i = 0; i < numSwitch; i++)  // read in bytes, one for each relay
+                    {
+                        relayStatus[i] = (byte)Serial.ReadByte(); //.net version
+                    }
+                }
+                else
+                {
+                    relaycmd[0] = startByte;
+                    relaycmd[2] = readpin;
+                    for (int i = 0; i < numSwitch; i++)  // read in bytes, one for each relay
+                    {
+
+                        relaycmd[1] = (byte)(i + 1);  // form relay number
+                        Serial.Write(relaycmd, 0, 3);         // send command .net version
+                        for (int y = 0; y < 3; y++) relayrx[y] = (byte)Serial.ReadByte(); //.net version
+                        relayStatus[i] = relayrx[2];
+                    }
                 }
                 return;
             }
@@ -445,7 +465,7 @@ namespace ASCOM.RelayPwr
                     relaycmd[2] = (byte)(clearpin);
                     relayStatus[id] = 0; // update status
                 }
-                Serial.Write(relaycmd,0,3);         // send command .net versionn
+                Serial.Write(relaycmd,0,3);         // send command .net version
                 var str = string.Format("SetSwitch({0}) -  Write", id);
                 tl.LogMessage("SetSwitch", str);
                 updatefromboard(); // update actual switch states
